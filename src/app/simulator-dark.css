@@ -1,0 +1,407 @@
+/* Midnight control room. Only the simulator opts in; the classic game stays independent. */
+.simulator[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #e3edf5;
+  --subtle: #92a8ba;
+  --border: #233549;
+  --accent: #51d4c5;
+  --surface: #101d2b;
+  --raised: #162739;
+  background: #0a1420;
+  color: var(--ink);
+}
+.simulator[data-theme="dark"]
+  :is(
+    .sim-header,
+    .sim-sidebar,
+    .sim-inspector,
+    .sim-map-toolbar,
+    .sim-telemetry,
+    .sim-bottom,
+    .sim-modal
+  ) {
+  background: var(--surface);
+  border-color: var(--border);
+}
+.simulator[data-theme="dark"] .sim-header {
+  background: linear-gradient(100deg, #101e2e, #0c1825);
+  box-shadow: 0 1px 0 #ffffff03;
+}
+.simulator[data-theme="dark"] .sim-brand {
+  color: #edf6ff !important;
+}
+.simulator[data-theme="dark"] .sim-brand > span {
+  background: linear-gradient(145deg, #1c9f99, #216a83);
+  box-shadow: 0 0 22px #2acbbb16;
+}
+.simulator[data-theme="dark"] .sim-rail {
+  background: #0b1724;
+  border-right: 1px solid var(--border);
+}
+.simulator[data-theme="dark"] .sim-rail button.active {
+  background: #173849;
+  color: #77ead8;
+}
+.simulator[data-theme="dark"]
+  :is(
+    p,
+    .sim-mix-list span,
+    .sim-metric-grid span,
+    .sim-properties dt,
+    .sim-asset-row small,
+    .sim-map-caption small,
+    .sim-map-event small,
+    .sim-range-label,
+    .sim-modal > label,
+    .sim-event > span,
+    .sim-water > span,
+    .sim-water > div,
+    .sim-status-card footer,
+    .sim-telemetry header > div,
+    .sim-telemetry header span
+  ) {
+  color: #95aabd;
+}
+.simulator[data-theme="dark"]
+  :is(
+    .sim-section-title,
+    .sim-properties dd,
+    .sim-telemetry header strong,
+    .sim-map-caption > span,
+    .sim-guide-step h3,
+    .sim-toolbar-title,
+    .sim-toolbar-title strong
+  ) {
+  color: #d5e4ef;
+}
+.simulator[data-theme="dark"]
+  :is(
+    a,
+    .sim-range-label b,
+    .sim-scenario-card button,
+    .sim-telemetry header button,
+    .sim-event small,
+    .sim-map-event em
+  ) {
+  color: #62d7cd;
+}
+.simulator[data-theme="dark"]
+  :is(.sim-caption, .sim-last-event, .sim-scenario-button, .sim-text-button) {
+  color: #95aabd !important;
+}
+.simulator[data-theme="dark"]
+  :is(
+    .sim-panel-heading,
+    .sim-sidebar-footer,
+    .sim-asset-row,
+    .sim-properties > div,
+    .sim-metric-grid > div,
+    .sim-event,
+    .sim-telemetry > header,
+    .sim-source-link,
+    .sim-source-pair > a
+  ) {
+  border-color: var(--border);
+}
+.simulator[data-theme="dark"] .sim-panel-content {
+  scrollbar-color: #344c62 transparent;
+}
+.simulator[data-theme="dark"] :is(input, select, .sim-search) {
+  background: #0c1825;
+  color: #dceaf5;
+  border-color: #2c4258;
+}
+.simulator[data-theme="dark"] .sim-search input {
+  background: transparent;
+}
+.simulator[data-theme="dark"] input::placeholder {
+  color: #7e95aa;
+}
+.simulator[data-theme="dark"] :is(input[type="range"], progress) {
+  accent-color: #50c9ba;
+}
+.simulator[data-theme="dark"] progress::-webkit-progress-bar {
+  background: #24394d;
+}
+.simulator[data-theme="dark"] progress::-webkit-progress-value {
+  background: #4ebcac;
+}
+.simulator[data-theme="dark"] .sim-status-card {
+  background:
+    radial-gradient(ellipse at top right, #1b474638, transparent 75%), #11252e;
+  border-color: #29484e;
+  box-shadow: inset 0 1px 0 #ffffff05;
+}
+.simulator[data-theme="dark"] .sim-status-card > div:first-child {
+  color: #7ed8c9;
+}
+.simulator[data-theme="dark"] .sim-frequency-track {
+  background: linear-gradient(
+    90deg,
+    #876e3b,
+    #326b62 35%,
+    #326b62 65%,
+    #876e3b
+  );
+}
+.simulator[data-theme="dark"] .sim-frequency-track > i {
+  background: #b1fff1;
+  box-shadow: 0 0 7px #7ee9d6;
+}
+.simulator[data-theme="dark"] :is(.sim-scenario-card, .sim-water, .sim-notice) {
+  background: #142536;
+  border-color: #2b4256;
+  color: #abc1d2;
+}
+.simulator[data-theme="dark"] .sim-segments {
+  background: #091521;
+  border: 1px solid #213548;
+}
+.simulator[data-theme="dark"] .sim-segments > button.active {
+  background: #203b4b;
+  color: #84e5db;
+  box-shadow: 0 1px 4px #0003;
+}
+.simulator[data-theme="dark"] .sim-asset-row.selected {
+  background: #15343e;
+}
+.simulator[data-theme="dark"] .sim-asset-icon {
+  background: #273d51;
+}
+.simulator[data-theme="dark"] :is(.sim-badge, .sim-badge.muted) {
+  background: #223446;
+  color: #b1c3d2;
+}
+.simulator[data-theme="dark"] .sim-badge.good {
+  background: #153b35;
+  color: #76debe;
+}
+.simulator[data-theme="dark"] .warning-text {
+  color: #f2bb79;
+}
+.simulator[data-theme="dark"] .sim-event.warning i {
+  color: #efbd6a;
+}
+.simulator[data-theme="dark"] .sim-event.critical i {
+  color: #fa8195;
+}
+.simulator[data-theme="dark"]
+  :is(.sim-dispatch-steps button, .sim-outcome button, .sim-guide-step > b) {
+  background: #21374a;
+  color: #99dfdc;
+  border-color: #314c61;
+}
+.simulator[data-theme="dark"] .sim-button.secondary {
+  background: #21374a !important;
+  color: #b6d5e5 !important;
+  border-color: #314c61;
+}
+.simulator[data-theme="dark"] :is(.sim-button, button.sim-run) {
+  background: #237d80 !important;
+  color: #fff !important;
+}
+.simulator[data-theme="dark"] button.sim-pause {
+  background: #183b43;
+  color: #83e0d4;
+}
+.simulator[data-theme="dark"] button:hover:not(:disabled) {
+  background: #223b4d;
+  color: #9aeee2;
+}
+.simulator[data-theme="dark"] :is(button, input, select, a):focus-visible {
+  outline-color: #74ded0;
+}
+.simulator[data-theme="dark"] .sim-modal-backdrop {
+  background: #020810b8;
+}
+.simulator[data-theme="dark"] .sim-modal {
+  border: 1px solid #30465a;
+  box-shadow: 0 24px 100px #0008;
+}
+.simulator[data-theme="dark"] :is(.sim-toast, .sim-outcome) {
+  background: #162a3af5;
+  color: #e0edf5;
+  border-color: #3a5668;
+  box-shadow: 0 8px 30px #0004;
+}
+.simulator[data-theme="dark"]
+  :is(
+    .restoration-procedure h3,
+    .restoration-procedure summary,
+    .restoration-row
+  ) {
+  color: #c1d6e5;
+}
+.simulator[data-theme="dark"]
+  :is(.restoration-procedure section, .restoration-procedure details) {
+  border-color: #2d4358;
+}
+.simulator[data-theme="dark"] .restoration-procedure button {
+  background: #203749;
+  border-color: #345367;
+  color: #a2e0df;
+}
+.simulator[data-theme="dark"] .restoration-status strong {
+  color: #67dac4;
+}
+/* Tone only the background tiles: protection colors and geographic vectors are untouched. */
+.simulator[data-theme="dark"]
+  :is(.sim-map-area, .sim-map-canvas, .leaflet-container, .sim-map-loading) {
+  background: #101e2a;
+  color: #b4c8d8;
+}
+.simulator[data-theme="dark"] .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) saturate(0.38) brightness(0.8)
+    contrast(0.92);
+}
+.simulator[data-theme="dark"] .sim-map-blackout .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) saturate(0.1) brightness(0.5)
+    contrast(0.92);
+}
+.simulator[data-theme="dark"] .leaflet-coastline-pane path {
+  fill: #1c2b34;
+  stroke: #425967;
+}
+.simulator[data-theme="dark"]
+  :is(
+    .sim-map-caption,
+    .sim-map-key,
+    .sim-map-detail-level,
+    .sim-map-tools,
+    .sim-map-incident-summary,
+    .sim-map-event
+  ) {
+  background: #122333f2;
+  border-color: #344a5d;
+  color: #c0d4e2;
+  box-shadow: 0 4px 16px #0003;
+}
+.simulator[data-theme="dark"] .sim-map-tools button {
+  background: #172a3b;
+  border-color: #304759;
+  color: #d0e7f5;
+}
+.simulator[data-theme="dark"] .sim-map-label {
+  background: #122536f5 !important;
+  border-color: #3b5266 !important;
+  color: #d8e8f3 !important;
+  box-shadow: 0 2px 6px #0005 !important;
+}
+.simulator[data-theme="dark"] .sim-map-label--selected {
+  background: #183b46 !important;
+  border-color: #60d5ce !important;
+  color: #b0fff2 !important;
+}
+.simulator[data-theme="dark"] .sim-map-symbol > rect {
+  fill: #172b3c;
+}
+.simulator[data-theme="dark"] .sim-map-marker--selected .sim-map-symbol > rect {
+  fill: #204454;
+}
+.simulator[data-theme="dark"] .sim-map-symbol {
+  filter: brightness(1.5) drop-shadow(0 2px 3px #0007);
+}
+.simulator[data-theme="dark"] .sim-map-equipment-status {
+  background: #20374a;
+  color: #d9e7f0;
+  border-color: #456176;
+}
+.simulator[data-theme="dark"] .sim-map-marker--trip .sim-map-equipment-status {
+  background: #a52d46;
+  color: #fff0f3;
+  border-color: #ff8099;
+}
+.simulator[data-theme="dark"] .sim-map-marker--shed .sim-map-equipment-status {
+  background: #493820;
+  color: #ffe1a7;
+  border-color: #bf914b;
+}
+.simulator[data-theme="dark"] .sim-map-line-status > span {
+  background: #3d3120;
+  color: #ffdda1;
+  border-color: #b58b4d;
+}
+.simulator[data-theme="dark"] .sim-map-line-status.is-danger > span {
+  background: #a52d46;
+  color: white;
+  border-color: #ff8099;
+}
+.simulator[data-theme="dark"] .sim-map-incident-summary .is-trip {
+  color: #ff96a9;
+}
+.simulator[data-theme="dark"] .sim-map-incident-summary .is-shed {
+  color: #f5ce8d;
+}
+.simulator[data-theme="dark"] .sim-map-event--critical {
+  border-left-color: #ff6f8c;
+}
+.simulator[data-theme="dark"] .sim-map-event--warning {
+  border-left-color: #e8b65f;
+}
+.simulator[data-theme="dark"] .sim-map-event-icon {
+  background: #19463f;
+  color: #92e5ce;
+}
+.simulator[data-theme="dark"] .sim-map-event--critical .sim-map-event-icon {
+  background: #4e2334;
+  color: #ffa5b7;
+}
+.simulator[data-theme="dark"] .sim-map-event--warning .sim-map-event-icon {
+  background: #483923;
+  color: #fbd392;
+}
+.simulator[data-theme="dark"] .sim-map-offline {
+  background: #332d20;
+  border-color: #796744;
+  color: #f1d49f;
+}
+.simulator[data-theme="dark"] .sim-map-offline button {
+  background: #4a3c26;
+}
+.simulator[data-theme="dark"]
+  :is(
+    .leaflet-control-attribution,
+    .leaflet-control-scale-line,
+    .leaflet-tooltip
+  ) {
+  background: #102332ef;
+  color: #c1d3df;
+  border-color: #658095;
+}
+.simulator[data-theme="dark"] .leaflet-tooltip-top:before {
+  border-top-color: #658095;
+}
+.simulator[data-theme="dark"] .curve-view svg text {
+  fill: #9bb2c6 !important;
+}
+.simulator[data-theme="dark"] .curve-view svg line {
+  stroke: #2a4053 !important;
+}
+.simulator[data-theme="dark"] .curve-legend {
+  color: #b3c6d6;
+}
+.simulator[data-theme="dark"] .curve-view button {
+  color: #71d5cc;
+}
+.simulator[data-theme="dark"] .curve-tooltip {
+  background: #152b3b;
+  border-color: #3b5a6d;
+  color: #d9e8f2;
+}
+.simulator[data-theme="dark"] .curve-view table {
+  color: #bed0df;
+}
+.simulator[data-theme="dark"] .curve-view :is(th, td) {
+  border-color: #2c4355;
+}
+@media (max-width: 420px) {
+  .sim-top-actions {
+    gap: 2px;
+  }
+  .sim-top-actions > button {
+    padding: 4px;
+  }
+  .sim-header {
+    padding-inline: 9px;
+  }
+}

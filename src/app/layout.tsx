@@ -3,6 +3,7 @@ import "./globals.css";
 import "./rts.css";
 import "leaflet/dist/leaflet.css";
 import "./simulator.css";
+import "./simulator-dark.css";
 export const metadata: Metadata = {
   title: "Lanka Grid — Sri Lanka Power System Simulator",
   description:
