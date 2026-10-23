@@ -121,3 +121,71 @@ test("transmission geometry has an interpretable voltage and never invents elect
     );
   }
 });
+
+test("short mapped terminal links preserve their real shared OSM nodes", () => {
+  const routes = new Map(transmissionRoutes.map((route) => [route.id, route]));
+  const joins = [
+    ["osm-way-702202546", "osm-way-1386955937", 11179697602],
+    ["osm-way-702202546", "osm-way-1386955938", 11179697602],
+    ["osm-way-1206495967", "osm-way-1354712326", 11179697533],
+    ["osm-way-1206495967", "osm-way-1354712327", 11179697533],
+  ] as const;
+  for (const [corridorId, terminalId, nodeId] of joins) {
+    const corridor = routes.get(corridorId);
+    const terminal = routes.get(terminalId);
+    assert.ok(
+      corridor && terminal,
+      `${terminalId}: short terminal must not be filtered out`,
+    );
+    const i = corridor.osmNodeIds?.indexOf(nodeId) ?? -1;
+    const k = terminal.osmNodeIds?.indexOf(nodeId) ?? -1;
+    assert.ok(
+      i >= 0 && k >= 0,
+      `${terminalId}: a join needs the original shared OSM node`,
+    );
+    assert.deepEqual(corridor.coordinates[i], terminal.coordinates[k]);
+    assert.equal(
+      terminal.sourceUrl,
+      `https://www.openstreetmap.org/way/${terminalId.replace("osm-way-", "")}`,
+    );
+  }
+});
+
+test("original node provenance cannot join different coordinate positions", () => {
+  const nodeLocations = new Map<number, [number, number]>();
+  for (const route of transmissionRoutes) {
+    if (!route.osmNodeIds) continue;
+    assert.equal(
+      route.osmNodeIds.length,
+      route.coordinates.length,
+      `${route.id}: one original node per coordinate`,
+    );
+    route.osmNodeIds.forEach((nodeId, index) => {
+      assert.ok(Number.isSafeInteger(nodeId) && nodeId > 0);
+      const known = nodeLocations.get(nodeId);
+      if (known)
+        assert.deepEqual(
+          route.coordinates[index],
+          known,
+          `${nodeId}: shared node coordinates must agree`,
+        );
+      else nodeLocations.set(nodeId, route.coordinates[index]);
+    });
+    assert.ok(["overhead", "cable", "busbar"].includes(route.segmentType!));
+  }
+});
+
+test("station feeder coverage retains the researched western and hydro branches", () => {
+  for (const id of [
+    "osm-way-422435859",
+    "osm-way-702191472",
+    "osm-way-702857461",
+    "osm-way-704003806",
+    "osm-way-1354576136",
+  ]) {
+    const route = transmissionRoutes.find((candidate) => candidate.id === id);
+    assert.ok(route, `${id}: researched feeder must remain available`);
+    assert.equal(route.confidence, "mapped");
+    assert.ok(route.osmNodeIds?.length);
+  }
+});

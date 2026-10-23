@@ -27,6 +27,10 @@ The retained solver has **ten regional buses, eighteen modeled branches, seven n
 | Batticaloa         | S9               |
 | Southern grid      | S10              |
 
+The operating map draws a separate equipment connection for each generator, demand group and battery, from its display position to its assigned equivalent bus. Victoria, Upper Kotmale, Samanalawewa and Kelanitissa connections pass through their explicitly associated mapped switchyards. These dotted connectors are presentation geometry: they have no independent breaker, voltage or rating and are not surveyed routes. Other researched plant sites remain in Atlas rather than appearing to inject power into the model.
+
+Moving dashes indicate the sign of modeled MW flow and stop when paused. Red protection-trip badges remain until the model clears the trip; amber shedding badges use the same maximum of manual (30%) and automatic (20%/40%) curtailment as the solver. New event pulses/cards last nine browser-clock seconds so accelerated exercises remain readable. These are simulation events, never telemetry from the OSM reference routes. Loading a save or resetting a scenario suppresses historical event replay.
+
 All eighteen model branch endpoints, ratings and reactances are illustrative. Reactances are derived from the previous schematic's distances, not physical conductor parameters or geographic length. The model ratings are in MW; they are not sourced thermal ampacities, MVA ratings, or measured loading. Difficulty and scenario settings can change the ratings. A simulated branch must never inherit a real circuit's identity merely because it lies near the same corridor.
 
 For each connected island, the solver constructs a susceptance matrix and solves a linear DC active-power approximation with an angle reference. Opening a branch changes connectivity and reroutes flows; sequential thermal trips can split the network into islands. Load delivery is reduced when generation is inadequate. The network is lossless. Source injections are scaled to served demand for the steady-state flow calculation, while imbalance separately drives the frequency approximation.

@@ -1,6 +1,6 @@
 # Sri Lanka geographic infrastructure reference
 
-Researched **23 October 2026**. The simulator bundles **45 sites** (23 generating stations and 22 substations/switchyards) and **59 mapped 132/220 kV transmission way segments**, retaining **4,994 route vertices**. These are public geographic reference records, separate from the simulation's reduced electrical network. This is a selected subset, not a complete inventory of Sri Lanka's network.
+Researched **23 October 2026**. The simulator bundles **56 sites** (23 generating stations and 33 substations/switchyards) and **138 mapped 132/220 kV transmission way segments**, retaining **7,190 route vertices**. These are public geographic reference records, separate from the simulation's reduced electrical network. This is a selected subset, not a complete inventory of Sri Lanka's network.
 
 ## Sources and precedence
 
@@ -22,11 +22,30 @@ https://api.openstreetmap.org/api/0.6/relation/{id}/full.json
 https://api.openstreetmap.org/api/0.6/map.json?bbox={west},{south},{east},{north}
 ```
 
-A small Lakvijaya extract exposed the New Chilaw and Anuradhapura line endpoints. Further small extracts around observed endpoints and verified plants supplied additional routes and substations. Full OSM ways include their complete node sequences, so these paths follow mapped towers rather than interpolated straight lines. Only `power=line` ways explicitly tagged with `voltage=132000` or `220000` were retained. Short yard jumpers below approximately 400 m and ways with fewer than four nodes were omitted. No routes were invented to close coverage gaps.
+A small Lakvijaya extract exposed the New Chilaw and Anuradhapura line endpoints. Further small extracts around observed endpoints and verified plants supplied additional routes and substations. Full OSM ways include their complete node sequences, so these paths follow mapped towers rather than interpolated straight lines. Only mapped power ways explicitly tagged with `voltage=132000` or `220000` are retained. The original extract excluded short yard links, which left visible gaps. The continuity pass described below removes that length filter and retains real two-node links and mapped busbars. No routes are invented to close coverage gaps.
 
 Coordinates use WGS84 latitude/longitude. Polygon markers use their footprint bounding-box centers; they are not surveyed generator terminals. Upper Kotmale and Kotmale use actual OSM powerhouse points. Thambapavani uses the bounding center of its mapped turbine group, representing an extended wind farm. Kelanitissa CCGT uses its mapped **165 MW building**, rather than the center of the entire complex.
 
 The `mapped` confidence value means **an OSM object with geometry was retrieved**. It does not mean CEB validated the location. Substation voltage is displayed only when explicitly present in its OSM tags. Labels for unnamed Anuradhapura yards and the Mannar yard are geographic descriptions; their official asset names are unverified. Biyagama/Heiyanthuduwa is a geographic alias. Route names are either OSM names or descriptive names derived from nearby mapped sites; they are not official circuit designations.
+
+## Continuity pass: terminal links and missing feeders
+
+A bounded follow-up inspected small OSM extracts at 16 existing plant/yard locations and 27 actual dangling corridor endpoints. It added **79 source-linked way segments** and **11 named substations**, keeping all original 59 route IDs and their coordinates unchanged. Forty-three additions have four or fewer vertices: this is legitimate terminal geometry, not missing detail.
+
+The additions include the West Coast 220 kV feeder, the Ukuwela–Bowatenna area, Canyon and Wimalasurendra feeders, branches through Kurunegala and Polonnaruwa, southern/regional routes, and terminal links at Anuradhapura, Mannar, Nadukuda, New Habarana and Vavuniya. The new substation footprints identify many existing route ends without moving them onto city centers.
+
+| Example                           | Primary geometry source                                        | Continuity evidence                                                                                                                                                |
+| --------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| West Coast outgoing 220 kV feeder | [Way 422435859](https://www.openstreetmap.org/way/422435859)   | 72 original mapped vertices; plant-side node [8955374804](https://www.openstreetmap.org/node/8955374804)                                                           |
+| Ukuwela / Bowatenna 132 kV branch | [Way 702857461](https://www.openstreetmap.org/way/702857461)   | 93 original vertices; terminal nodes [12537845362](https://www.openstreetmap.org/node/12537845362) and [6600675489](https://www.openstreetmap.org/node/6600675489) |
+| Anuradhapura terminal link        | [Way 1386955937](https://www.openstreetmap.org/way/1386955937) | Shares OSM node [11179697602](https://www.openstreetmap.org/node/11179697602) with corridor [702202546](https://www.openstreetmap.org/way/702202546)               |
+| Nadukuda terminal link            | [Way 1354712326](https://www.openstreetmap.org/way/1354712326) | Shares OSM node [11179697533](https://www.openstreetmap.org/node/11179697533) with corridor [1206495967](https://www.openstreetmap.org/way/1206495967)             |
+| Canyon-area feeder                | [Way 704003806](https://www.openstreetmap.org/way/704003806)   | 18 original mapped vertices                                                                                                                                        |
+| Wimalasurendra-area feeder        | [Way 1354576136](https://www.openstreetmap.org/way/1354576136) | A valid four-node 132 kV way, retained without a minimum-length cutoff                                                                                             |
+
+`osmNodeIds` records original OSM node identifiers in coordinate order on all 79 new routes and 47 rechecked existing routes. `segmentType` distinguishes overhead ways and explicitly tagged busbars; the schema also supports mapped cables. An OSM shared node establishes a geographic join, not verified utility breaker connectivity. Regression tests ensure terminal links remain, preserve their source IDs and share identical coordinates at the original join nodes.
+
+Coverage is still partial. In particular, the bounded Broadlands and Kukule Ganga extracts contained no transmission feeder ways, so no lines were drawn to those plant markers. Thambapavani's marker is a wind-farm extent center; its collector system cannot be reconstructed by drawing a straight line to Nadukuda. The two solar plants' distribution feeders, underground plant connections, and generator-to-transformer connections remain outside this dataset. A route ending at a switchyard boundary or terminal should not be extended to the site's center just to appear connected.
 
 ## Important corrections
 

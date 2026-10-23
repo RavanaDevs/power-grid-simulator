@@ -7,14 +7,29 @@ import type {
   InfrastructureSite,
   TransmissionRoute,
 } from "@/simulator/infrastructure";
+import {
+  BUS_COORDS,
+  MODEL_COORDS,
+  buildModelConnections,
+  MODEL_SWITCHYARDS,
+} from "@/simulator/modelTopology";
+import {
+  getMapAlarms,
+  isMapFeatureVisible,
+  updateMapCueTimeline,
+  type MapCueTimeline,
+  type MapEventCue,
+} from "@/simulator/mapPresentation";
 import boundary from "@/game/data/sri-lanka.json";
 
 type Props = {
   state: State;
+  sessionKey: number;
   sites: InfrastructureSite[];
   routes: TransmissionRoute[];
   selectedId: string;
   onSelect: (id: string) => void;
+  onLocateModel: (id: string) => void;
   focusId: string | null;
   focusRequest: number;
   layer: "operations" | "infrastructure";
@@ -26,14 +41,26 @@ type MarkerRecord = {
   name: string;
   kind: InfrastructureSite["kind"] | "load" | "bus" | "battery";
   simulationId?: string;
+  capacityMW?: number;
+  yardFor?: string;
   signature?: string;
+  visible: boolean;
+  alarm: boolean;
+  contextualHidden?: boolean;
+  labelSize?: [number, number];
 };
 type LineRecord = {
   line: Leaflet.Polyline;
   hit: Leaflet.Polyline;
+  badge?: Leaflet.Marker;
   modelId?: string;
+  assetId?: string;
+  selectionId: string;
+  viaSiteId?: string;
   voltage: number;
   approximate: boolean;
+  signature?: string;
+  badgeText?: string;
 };
 type MapRuntime = {
   L: typeof Leaflet;
@@ -42,33 +69,9 @@ type MapRuntime = {
   features: Leaflet.LayerGroup;
   markers: Map<string, MarkerRecord>;
   lines: Map<string, LineRecord>;
-};
-const BUS_COORDS: [number, number][] = [
-  [8.03, 79.83],
-  [7.29, 80.64],
-  [6.68, 80.4],
-  [6.93, 79.86],
-  [9.66, 80.02],
-  [8.98, 79.92],
-  [8.31, 80.4],
-  [8.57, 81.23],
-  [7.72, 81.7],
-  [6.05, 80.75],
-];
-const MODEL_COORDS: Record<string, [number, number]> = {
-  D1: [6.927, 79.861],
-  D2: [7.291, 80.633],
-  D3: [6.682, 80.399],
-  D4: [9.661, 80.025],
-  D5: [8.981, 79.916],
-  D6: [8.312, 80.403],
-  D7: [8.571, 81.233],
-  D8: [7.717, 81.693],
-  D9: [5.949, 80.546],
-  D10: [7.167, 79.89],
-  B1: [8.02, 79.88],
-  G3: [6.2, 81.12],
-  G9: [6.82, 79.95],
+  frame: number;
+  moving: boolean;
+  scheduleLayout: () => void;
 };
 const SRI_LANKA_BOUNDS: [[number, number], [number, number]] = [
   [5.8, 79.45],
@@ -111,60 +114,101 @@ function iconHTML(
   record: MarkerRecord,
   color: string,
   selected: boolean,
-  contextual: boolean,
+  badge = "",
 ) {
-  return `<svg class="sim-map-symbol" viewBox="0 0 32 32" width="24" height="24" aria-hidden="true"><rect x="1.5" y="1.5" width="29" height="29" rx="${record.kind === "substation" || record.kind === "bus" ? 5 : 15}" fill="${selected ? "#e4f4ff" : "#ffffff"}" stroke="${selected ? "#087ab5" : color}" stroke-width="${selected ? 3 : 1.8}" ${contextual ? 'stroke-dasharray="3 2"' : ""}/><g fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" transform="translate(3.2 3.2) scale(.8)">${GLYPHS[record.kind]}</g></svg><span class="sim-map-label${selected ? " sim-map-label--selected" : ""}">${escape(record.name)}</span>`;
+  const reference = !record.simulationId;
+  return `<svg class="sim-map-symbol" viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><rect x="1.5" y="1.5" width="29" height="29" rx="${record.kind === "substation" || record.kind === "bus" ? 5 : 15}" fill="${selected ? "#e4f4ff" : "#ffffff"}" stroke="${color}" stroke-width="${selected ? 3 : 1.8}" ${reference ? 'stroke-dasharray="3 2"' : ""}/><g fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" transform="translate(3.2 3.2) scale(.8)">${GLYPHS[record.kind]}</g></svg><span class="sim-map-label${selected ? " sim-map-label--selected" : ""}">${escape(record.name)}</span>${badge ? `<span class="sim-map-equipment-status">${escape(badge)}</span>` : ""}`;
 }
-function declutter(
-  runtime: MapRuntime,
-  showLabels: boolean,
-  selectedId: string,
-) {
-  const bounds = runtime.map.getContainer().getBoundingClientRect();
-  const occupied: {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  }[] = [];
-  const markers = [...runtime.markers.entries()].sort(([a, x], [b, y]) =>
-    a === selectedId
-      ? -1
-      : b === selectedId
-        ? 1
-        : Number(!!y.simulationId) - Number(!!x.simulationId),
+
+/** Run only after camera/detail changes, never on every simulation tick. */
+function layoutFeatures(r: MapRuntime, props: Props) {
+  const zoom = r.map.getZoom();
+  const selectedConnection = [...r.lines.values()].find(
+    (line) => line.assetId && line.selectionId === props.selectedId,
   );
-  // Protect every symbol from being covered by a label, even when its own label is hidden.
-  for (const [, record] of markers) {
-    const p = runtime.map.latLngToContainerPoint(record.marker.getLatLng());
-    occupied.push({
-      left: bounds.left + p.x - 12,
-      right: bounds.left + p.x + 12,
-      top: bounds.top + p.y - 12,
-      bottom: bounds.top + p.y + 12,
-    });
+  const selectedLine = props.state.lines.find(
+    (line) => `model:${line.id}` === props.selectedId,
+  );
+  const selectedEnds = selectedLine
+    ? [`S${selectedLine.from + 1}`, `S${selectedLine.to + 1}`]
+    : [];
+  for (const [id, record] of r.markers) {
+    const selected =
+      id === props.selectedId ||
+      id === selectedConnection?.viaSiteId ||
+      selectedEnds.includes(record.simulationId ?? "");
+    const visible =
+      (!record.contextualHidden || selected) &&
+      isMapFeatureVisible({
+        zoom,
+        kind: record.kind,
+        capacityMW: record.capacityMW,
+        simulationId: record.simulationId,
+        selected,
+        alarm: record.alarm,
+      });
+    if (visible !== record.visible) {
+      record.visible = visible;
+      if (visible) record.marker.addTo(r.features);
+      else r.features.removeLayer(record.marker);
+    }
   }
+  const markers = [...r.markers.entries()]
+    .filter(([, record]) => record.visible)
+    .sort(
+      ([a, x], [b, y]) =>
+        Number(b === props.selectedId) - Number(a === props.selectedId) ||
+        Number(y.alarm) - Number(x.alarm) ||
+        (y.capacityMW ?? 0) - (x.capacityMW ?? 0),
+    );
+  // Batch uncached size reads, then perform writes. Camera positions come from
+  // Leaflet projection, so there are no per-marker DOM geometry reads on zoom.
+  for (const [, record] of markers) {
+    if (!record.labelSize) {
+      const label = record.marker
+        .getElement()
+        ?.querySelector<HTMLElement>(".sim-map-label");
+      if (label) record.labelSize = [label.offsetWidth, label.offsetHeight];
+    }
+  }
+  const size = r.map.getSize();
+  type Box = { left: number; right: number; top: number; bottom: number };
+  const occupied: Box[] = markers.map(([, record]) => {
+    const p = r.map.latLngToContainerPoint(record.marker.getLatLng());
+    return { left: p.x - 17, right: p.x + 17, top: p.y - 17, bottom: p.y + 17 };
+  });
+  const overlaps = (box: Box) =>
+    occupied.some(
+      (a) =>
+        box.left < a.right + 3 &&
+        box.right > a.left - 3 &&
+        box.top < a.bottom + 2 &&
+        box.bottom > a.top - 2,
+    );
   for (const [id, record] of markers) {
     const label = record.marker
       .getElement()
       ?.querySelector<HTMLElement>(".sim-map-label");
-    if (!label) continue;
-    label.style.visibility = "visible";
-    const box = label.getBoundingClientRect();
-    const overlaps = occupied.some(
-      (a) =>
-        box.left < a.right + 4 &&
-        box.right > a.left - 4 &&
-        box.top < a.bottom + 3 &&
-        box.bottom > a.top - 3,
-    );
+    if (!label || !record.labelSize) continue;
+    const [width, height] = record.labelSize;
+    const p = r.map.latLngToContainerPoint(record.marker.getLatLng());
+    let left = 22;
+    let box = {
+      left: p.x + left,
+      right: p.x + left + width,
+      top: p.y - 12,
+      bottom: p.y - 12 + height,
+    };
+    if (overlaps(box) || box.right > size.x - 8) {
+      left = -22 - width;
+      box = { ...box, left: p.x + left, right: p.x + left + width };
+    }
     const outside =
-      box.left > bounds.right ||
-      box.right < bounds.left ||
-      box.top > bounds.bottom ||
-      box.bottom < bounds.top;
+      box.right < 0 || box.left > size.x || box.bottom < 0 || box.top > size.y;
     const visible =
-      !outside && (id === selectedId || (showLabels && !overlaps));
+      !outside &&
+      (id === props.selectedId || (props.showLabels && !overlaps(box)));
+    label.style.left = `${left + 16}px`;
     label.style.visibility = visible ? "visible" : "hidden";
     if (visible) occupied.push(box);
   }
@@ -175,10 +219,45 @@ export default function SimulatorMap(props: Props) {
   const runtime = useRef<MapRuntime | null>(null);
   const latest = useRef(props);
   latest.current = props;
-  const [ready, setReady] = useState(false);
+  const timeline = useRef<MapCueTimeline>({ lastEventId: null, cues: [] });
+  const lastSession = useRef(props.sessionKey);
+  const [cues, setCues] = useState<MapEventCue[]>([]);
+  // A generation also rebuilds overlays after a development hot reload.
+  const [ready, setReady] = useState(0);
   const [offline, setOffline] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [zoom, setZoom] = useState(7);
   const si = props.language === "si";
+  const operations = props.layer === "operations";
+
+  useEffect(() => {
+    const reset = lastSession.current !== props.sessionKey;
+    lastSession.current = props.sessionKey;
+    timeline.current = updateMapCueTimeline(
+      timeline.current,
+      props.state,
+      Date.now(),
+      { reset },
+    );
+    setCues((previous) =>
+      previous.length === timeline.current.cues.length &&
+      previous.every((cue, i) => cue === timeline.current.cues[i])
+        ? previous
+        : timeline.current.cues,
+    );
+  }, [props.state, props.sessionKey]);
+  useEffect(() => {
+    if (!cues.length) return;
+    const timer = window.setTimeout(() => {
+      timeline.current = updateMapCueTimeline(
+        timeline.current,
+        latest.current.state,
+        Date.now(),
+      );
+      setCues(timeline.current.cues);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [cues]);
 
   useEffect(() => {
     let disposed = false;
@@ -189,14 +268,15 @@ export default function SimulatorMap(props: Props) {
         const map = L.map(element.current, {
           center: [7.85, 80.7],
           zoom: 7,
-          zoomSnap: 0.25,
-          zoomDelta: 0.5,
+          zoomSnap: 0.5,
+          zoomDelta: 1,
           minZoom: 5,
           maxZoom: 18,
           zoomControl: false,
           preferCanvas: false,
           attributionControl: true,
           scrollWheelZoom: true,
+          wheelPxPerZoomLevel: 40,
         });
         map.createPane("coastline").style.zIndex = "199";
         L.geoJSON(
@@ -222,8 +302,9 @@ export default function SimulatorMap(props: Props) {
             attribution:
               '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
             maxZoom: 19,
-            keepBuffer: 1,
+            keepBuffer: 2,
             updateWhenIdle: true,
+            updateWhenZooming: false,
           },
         ).addTo(map);
         tiles.on("tileerror", () => {
@@ -231,34 +312,50 @@ export default function SimulatorMap(props: Props) {
         });
         map.attributionControl.setPrefix(false);
         L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
-        const features = L.layerGroup().addTo(map);
-        const value = {
+        const value: MapRuntime = {
           L,
           map,
           tiles,
-          features,
-          markers: new Map<string, MarkerRecord>(),
-          lines: new Map<string, LineRecord>(),
+          features: L.layerGroup().addTo(map),
+          markers: new Map(),
+          lines: new Map(),
+          frame: 0,
+          moving: false,
+          scheduleLayout: () => {},
+        };
+        value.scheduleLayout = () => {
+          if (value.frame || value.moving) return;
+          value.frame = requestAnimationFrame(() => {
+            value.frame = 0;
+            if (!disposed && !value.moving)
+              layoutFeatures(value, latest.current);
+          });
         };
         runtime.current = value;
-        map.fitBounds(SRI_LANKA_BOUNDS, { padding: [18, 18] });
-        map.on("zoomend moveend", () =>
-          declutter(
-            value,
-            latest.current.showLabels,
-            latest.current.selectedId,
-          ),
-        );
+        map.fitBounds(SRI_LANKA_BOUNDS, { padding: [22, 22] });
+        setZoom(map.getZoom());
+        map.on("movestart", () => {
+          value.moving = true;
+          map.getContainer().classList.add("sim-map-moving");
+        });
+        map.on("moveend", () => {
+          value.moving = false;
+          map.getContainer().classList.remove("sim-map-moving");
+          setZoom(map.getZoom());
+          value.scheduleLayout();
+        });
         observer = new ResizeObserver(() => {
           map.invalidateSize({ pan: false });
-          declutter(
-            value,
-            latest.current.showLabels,
-            latest.current.selectedId,
-          );
+          value.scheduleLayout();
         });
         observer.observe(element.current);
-        setReady(true);
+        void document.fonts.ready.then(() => {
+          if (disposed) return;
+          for (const record of value.markers.values())
+            record.labelSize = undefined;
+          value.scheduleLayout();
+        });
+        setReady((generation) => generation + 1);
       })
       .catch(() => {
         if (!disposed) setLoadError(true);
@@ -266,7 +363,10 @@ export default function SimulatorMap(props: Props) {
     return () => {
       disposed = true;
       observer?.disconnect();
-      runtime.current?.map.remove();
+      if (runtime.current) {
+        cancelAnimationFrame(runtime.current.frame);
+        runtime.current.map.remove();
+      }
       runtime.current = null;
     };
   }, []);
@@ -283,25 +383,31 @@ export default function SimulatorMap(props: Props) {
       name: string,
       kind: MarkerRecord["kind"],
       simulationId?: string,
+      capacityMW?: number,
     ) => {
       const record: MarkerRecord = {
         marker: r.L.marker(coord, { title: name, alt: name, keyboard: true }),
         name,
         kind,
         simulationId,
+        capacityMW,
+        visible: false,
+        alarm: false,
+        yardFor: Object.entries(MODEL_SWITCHYARDS).find(
+          ([, yard]) => yard === id,
+        )?.[0],
       };
       record.marker.setIcon(
         r.L.divIcon({
           className: "sim-map-marker",
-          html: iconHTML(record, KIND_COLOR[kind], false, !simulationId),
-          iconSize: [24, 24],
-          iconAnchor: [12, 12],
+          html: iconHTML(record, KIND_COLOR[kind], false),
+          iconSize: [32, 32],
+          iconAnchor: [16, 16],
         }),
       );
-      record.marker
-        .on("click", () => latest.current.onSelect(id))
-        .addTo(r.features);
-      record.marker.getElement()?.setAttribute("aria-label", name);
+      record.marker.on("click", () => latest.current.onSelect(id));
+      record.contextualHidden =
+        props.layer === "operations" && !simulationId && !record.yardFor;
       r.markers.set(id, record);
     };
     const addLine = (
@@ -311,34 +417,54 @@ export default function SimulatorMap(props: Props) {
       voltage: number,
       approximate: boolean,
       modelId?: string,
+      assetId?: string,
+      selectionId = id,
+      viaSiteId?: string,
     ) => {
       const line = r.L.polyline(coordinates, {
         color: voltage >= 220 ? "#7c3aed" : "#0d9488",
-        weight: voltage >= 220 ? 3 : 2.5,
+        weight: 2.5,
         opacity: 0.85,
-        dashArray: approximate ? "7 6" : undefined,
+        smoothFactor: 1.5,
         interactive: false,
       }).addTo(r.features);
       const hit = r.L.polyline(coordinates, {
         color: "transparent",
-        weight: 16,
+        weight: assetId ? 12 : 16,
         opacity: 0,
+        smoothFactor: 1.5,
         interactive: true,
       }).addTo(r.features);
       hit.bindTooltip(escape(name), { sticky: true, direction: "top" });
-      hit.on("click", () => latest.current.onSelect(id));
+      hit.on("click", () => latest.current.onSelect(selectionId));
       const path = hit.getElement();
       path?.setAttribute("tabindex", "0");
       path?.setAttribute("role", "button");
       path?.setAttribute("aria-label", name);
       path?.addEventListener("keydown", (event) => {
-        const key = (event as KeyboardEvent).key;
-        if (key === "Enter" || key === " ") {
+        if (["Enter", " "].includes((event as KeyboardEvent).key)) {
           event.preventDefault();
-          latest.current.onSelect(id);
+          latest.current.onSelect(selectionId);
         }
       });
-      r.lines.set(id, { line, hit, modelId, voltage, approximate });
+      const badge = modelId
+        ? r.L.marker(line.getBounds().getCenter(), {
+            interactive: true,
+            keyboard: true,
+            zIndexOffset: 500,
+          }).on("click", () => latest.current.onSelect(selectionId))
+        : undefined;
+      r.lines.set(id, {
+        line,
+        hit,
+        badge,
+        modelId,
+        assetId,
+        selectionId,
+        viaSiteId,
+        voltage,
+        approximate,
+      });
     };
     if (props.layer === "infrastructure") {
       for (const route of props.routes)
@@ -350,11 +476,32 @@ export default function SimulatorMap(props: Props) {
           route.confidence === "approximate",
         );
     } else {
+      // Equipment feeders belong to the reduced model. Their bends may reference
+      // a mapped switchyard, but they are never presented as surveyed line routes.
+      for (const connection of buildModelConnections(
+        latest.current.state.assets,
+        props.sites,
+      )) {
+        const asset = latest.current.state.assets.find(
+          (item) => item.id === connection.assetId,
+        )!;
+        addLine(
+          connection.id,
+          connection.coordinates,
+          `${si ? asset.nameSi : asset.name} · ${si ? "ආදර්ශ පෝෂක සම්බන්ධතාව" : "model equipment connection"}`,
+          0,
+          true,
+          undefined,
+          connection.assetId,
+          connection.selectionId,
+          connection.viaSiteId,
+        );
+      }
       for (const line of latest.current.state.lines)
         addLine(
           `model:${line.id}`,
           [BUS_COORDS[line.from], BUS_COORDS[line.to]],
-          `${line.id} · ${si ? "සරල කළ ආදර්ශ සම්බන්ධතාව" : "simplified model connection"}`,
+          `${line.id} · ${si ? "සරල කළ ආදර්ශ සම්බන්ධතාව" : "simplified model corridor"}`,
           0,
           true,
           line.id,
@@ -364,7 +511,7 @@ export default function SimulatorMap(props: Props) {
           addMarker(
             `model:${asset.id}`,
             BUS_COORDS[asset.bus],
-            si ? asset.nameSi : asset.name,
+            `${si ? asset.nameSi : asset.name} · ${si ? "ආදර්ශ බසය" : "equivalent bus"}`,
             "bus",
             asset.id,
           );
@@ -373,16 +520,15 @@ export default function SimulatorMap(props: Props) {
           asset.kind === "battery" ||
           ((asset.id === "G3" || asset.id === "G9") &&
             !props.sites.some((site) => site.simulationId === asset.id))
-        ) {
-          const coord = MODEL_COORDS[asset.id] ?? BUS_COORDS[asset.bus];
+        )
           addMarker(
             `model:${asset.id}`,
-            coord,
+            MODEL_COORDS[asset.id] ?? BUS_COORDS[asset.bus],
             `${si ? asset.nameSi : asset.name} · ${si ? "ආදර්ශය" : "model"}`,
             asset.kind,
             asset.id,
+            asset.capacity,
           );
-        }
       }
     }
     for (const site of props.sites)
@@ -392,20 +538,46 @@ export default function SimulatorMap(props: Props) {
         si ? site.nameSi : site.name,
         site.kind,
         site.simulationId,
+        site.capacityMW,
       );
-    declutter(r, props.showLabels, props.selectedId);
-  }, [ready, props.sites, props.routes, props.layer, props.language]); // State is updated below without recreating the map.
+    r.scheduleLayout();
+  }, [ready, props.sites, props.routes, props.layer, props.language]);
 
   useEffect(() => {
     const r = runtime.current;
     if (!ready || !r) return;
+    const assets = new Map(
+      props.state.assets.map((asset) => [asset.id, asset]),
+    );
+    const modelLines = new Map(
+      props.state.lines.map((line) => [line.id, line]),
+    );
+    const alarms = new Set(
+      getMapAlarms(props.state)
+        .filter((alarm) => alarm.kind !== "blackout")
+        .flatMap((alarm) => alarm.targetIds),
+    );
+    const recent = new Set(cues.flatMap((cue) => cue.targetIds));
+    let changedLayout = false;
+    r.map
+      .getContainer()
+      .classList.toggle(
+        "sim-map-paused",
+        props.state.paused || props.state.finished,
+      );
     for (const [id, record] of r.markers) {
       const asset = record.simulationId
-        ? props.state.assets.find((a) => a.id === record.simulationId)
+        ? assets.get(record.simulationId)
         : undefined;
       const selected = id === props.selectedId;
-      const isOperations = props.layer === "operations";
+      const tripped =
+        operations && asset && !asset.online && !!asset.tripReason;
+      const shed =
+        operations && asset?.kind === "load"
+          ? Math.max(asset.shed ? 0.3 : 0, asset.autoShed ?? 0)
+          : 0;
       const dead =
+        operations &&
         asset &&
         (asset.kind === "bus"
           ? props.state.busFrequency[asset.bus] < 1
@@ -413,101 +585,203 @@ export default function SimulatorMap(props: Props) {
             ? (asset.served ?? 0) < 0.1
             : !asset.online);
       const warning =
+        operations &&
         asset &&
         (asset.starting ||
-          (asset.kind === "load" &&
-            (asset.served ?? 0) < asset.output * 0.95) ||
+          shed > 0 ||
           (props.state.busFrequency[asset.bus] > 1 &&
             Math.abs(props.state.busFrequency[asset.bus] - 50) > 0.5));
-      const color =
-        isOperations && asset
+      const alarm = !!(
+        operations &&
+        asset &&
+        (alarms.has(asset.id) || recent.has(asset.id))
+      );
+      const color = tripped
+        ? "#d3344f"
+        : operations && asset
           ? dead
-            ? "#87929b"
+            ? "#8493a2"
             : warning
-              ? "#d58b17"
+              ? "#c17b0b"
               : "#058b76"
           : KIND_COLOR[record.kind];
-      const signature = `${selected}:${color}:${record.name}:${props.layer}`;
+      const badge = tripped
+        ? si
+          ? "විසන්ධියි"
+          : "TRIPPED"
+        : shed
+          ? `${si ? "අඩු කළ භාරය" : "SHED"} ${Math.round(shed * 100)}%`
+          : operations && asset?.kind === "load" && dead
+            ? si
+              ? "විදුලිය නැත"
+              : "NO SUPPLY"
+            : operations && asset?.starting
+              ? si
+                ? "ආරම්භ වෙමින්"
+                : "STARTING"
+              : "";
+      const active =
+        operations && record.simulationId && recent.has(record.simulationId);
+      const signature = `${selected}:${color}:${badge}:${active}:${props.layer}`;
+      if (record.alarm !== alarm) {
+        record.alarm = alarm;
+        changedLayout = true;
+      }
       if (record.signature !== signature) {
         record.marker.setIcon(
           r.L.divIcon({
-            className: `sim-map-marker${selected ? " sim-map-marker--selected" : ""}`,
-            html: iconHTML(record, color, selected, !asset),
-            iconSize: [24, 24],
-            iconAnchor: [12, 12],
+            className: `sim-map-marker${selected ? " sim-map-marker--selected" : ""}${tripped ? " sim-map-marker--trip" : shed ? " sim-map-marker--shed" : ""}${active ? " sim-map-marker--event" : ""}`,
+            html: iconHTML(record, color, selected, badge),
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
           }),
         );
-        record.marker.setZIndexOffset(selected ? 1000 : asset ? 200 : 0);
+        record.marker.setZIndexOffset(
+          selected ? 1200 : alarm ? 800 : asset ? 200 : 0,
+        );
+        record.marker
+          .getElement()
+          ?.setAttribute(
+            "aria-label",
+            `${record.name}${badge ? ` · ${badge}` : ""}`,
+          );
         record.signature = signature;
+        changedLayout = true;
       }
     }
-    for (const [id, record] of r.lines) {
-      const selected = id === props.selectedId;
-      const line = record.modelId
-        ? props.state.lines.find((item) => item.id === record.modelId)
-        : undefined;
+    for (const record of r.lines.values()) {
+      const selected = record.selectionId === props.selectedId;
+      const line = record.modelId ? modelLines.get(record.modelId) : undefined;
+      const asset = record.assetId ? assets.get(record.assetId) : undefined;
+      const tripped = line
+        ? !line.online && !!line.tripReason
+        : asset
+          ? !asset.online && !!asset.tripReason
+          : false;
+      const open = line
+        ? !line.online
+        : asset
+          ? asset.kind === "load"
+            ? (asset.served ?? 0) < 0.1
+            : !asset.online
+          : false;
       const utilization = line ? Math.abs(line.flow) / line.capacity : 0;
-      const color = selected
-        ? "#008bd2"
-        : line
-          ? !line.online
-            ? "#d83d53"
-            : utilization > 1
-              ? "#d83d53"
-              : utilization > 0.8
-                ? "#cd8c22"
+      const flow =
+        line?.flow ??
+        (asset?.kind === "load" ? -(asset.served ?? 0) : (asset?.output ?? 0));
+      const flowing = operations && !open && Math.abs(flow) > 0.1;
+      const danger = tripped || utilization > 1;
+      const color = danger
+        ? "#d3344f"
+        : selected
+          ? "#008bd2"
+          : open
+            ? "#8998a7"
+            : line || asset
+              ? utilization >= 0.8
+                ? "#cb8814"
                 : "#168d7d"
-          : record.voltage >= 220
-            ? "#7c3aed"
-            : "#0d9488";
-      record.line.setStyle({
-        color,
-        weight: selected ? 5 : 2.5,
-        opacity: selected ? 1 : line && !line.online ? 0.65 : 0.85,
-        dashArray: record.approximate
-          ? line && !line.online
-            ? "2 7"
-            : "7 6"
-          : undefined,
-      });
-      if (selected) record.line.bringToFront();
+              : record.voltage >= 220
+                ? "#7c3aed"
+                : "#0d9488";
+      const active = !!record.modelId && recent.has(record.modelId);
+      const signature = `${selected}:${color}:${open}:${flowing}:${flow < 0}:${active}`;
+      if (record.signature !== signature) {
+        record.line.setStyle({
+          color,
+          weight: selected ? 4.5 : record.assetId ? 2 : 2.8,
+          opacity: open ? 0.72 : record.assetId ? 0.7 : 0.9,
+          dashArray: record.approximate
+            ? open
+              ? "2 9"
+              : record.assetId
+                ? "3 7"
+                : "10 6"
+            : undefined,
+        });
+        const path = record.line.getElement();
+        path?.classList.toggle("sim-map-flow", flowing);
+        path?.classList.toggle("sim-map-flow-reverse", flow < 0);
+        path?.classList.toggle("sim-map-line-trip", tripped);
+        path?.classList.toggle("sim-map-line-event", active);
+        if (selected) record.line.bringToFront();
+        record.signature = signature;
+      }
+      const badgeText =
+        line && (tripped || utilization >= 0.9 || selected)
+          ? `${line.id} · ${tripped ? (si ? "විසන්ධියි" : "TRIPPED") : open ? (si ? "විවෘතයි" : "OPEN") : `${Math.round(utilization * 100)}%`}`
+          : "";
+      if (record.badge && record.badgeText !== `${badgeText}:${danger}`) {
+        if (badgeText) {
+          record.badge
+            .setIcon(
+              r.L.divIcon({
+                className: `sim-map-line-status${danger ? " is-danger" : ""}`,
+                html: `<span>${escape(badgeText)}</span>`,
+                iconSize: [0, 0],
+              }),
+            )
+            .addTo(r.features);
+          record.badge.getElement()?.setAttribute("aria-label", badgeText);
+        } else r.features.removeLayer(record.badge);
+        record.badgeText = `${badgeText}:${danger}`;
+      }
     }
-    declutter(r, props.showLabels, props.selectedId);
+    if (changedLayout) r.scheduleLayout();
   }, [
     ready,
     props.state,
     props.selectedId,
-    props.showLabels,
     props.layer,
     props.sites,
     props.routes,
     props.language,
+    cues,
+    operations,
+    si,
   ]);
 
+  useEffect(() => {
+    runtime.current?.scheduleLayout();
+  }, [props.selectedId, props.showLabels]);
   useEffect(() => {
     const r = runtime.current;
     if (!ready || !r || !props.focusId) return;
     r.map.invalidateSize({ pan: false });
     if (props.focusId === "country") {
-      r.map.fitBounds(SRI_LANKA_BOUNDS, { padding: [18, 18] });
+      r.map.fitBounds(SRI_LANKA_BOUNDS, { padding: [22, 22] });
       return;
     }
     const marker = r.markers.get(props.focusId);
     const line = r.lines.get(props.focusId);
     if (marker)
       r.map.flyTo(marker.marker.getLatLng(), Math.max(11, r.map.getZoom()), {
-        duration: 0.55,
+        duration: 0.45,
       });
     else if (line)
       r.map.flyToBounds(line.line.getBounds(), {
         padding: [60, 60],
         maxZoom: 11,
-        duration: 0.55,
+        duration: 0.45,
       });
   }, [ready, props.focusId, props.focusRequest, props.layer]);
 
+  const locateCue = (cue: MapEventCue) => {
+    const target = cue.targetIds[0];
+    if (target) props.onLocateModel(target);
+  };
+  const trips =
+    props.state.lines.filter((line) => !line.online && line.tripReason).length +
+    props.state.assets.filter((asset) => !asset.online && asset.tripReason)
+      .length;
+  const shedLoads = props.state.assets.filter(
+    (asset) =>
+      asset.kind === "load" && (asset.shed || (asset.autoShed ?? 0) > 0),
+  ).length;
   return (
-    <div className="sim-map">
+    <div
+      className={`sim-map${operations && props.state.outcome === "blackout" ? " sim-map-blackout" : ""}`}
+    >
       <div
         className="sim-map-canvas"
         ref={element}
@@ -556,24 +830,76 @@ export default function SimulatorMap(props: Props) {
           aria-label={si ? "මුළු රටම පෙන්වන්න" : "Fit Sri Lanka"}
           onClick={() =>
             runtime.current?.map.fitBounds(SRI_LANKA_BOUNDS, {
-              padding: [18, 18],
+              padding: [22, 22],
             })
           }
         >
-          <svg
-            width="17"
-            height="17"
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            aria-hidden="true"
-          >
-            <path d="M7 3H3v4m10-4h4v4M3 13v4h4m10-4v4h-4" />
-            <circle cx="10" cy="10" r="3" />
-          </svg>
+          ⌖
         </button>
       </div>
+      <div className="sim-map-detail-level">
+        {zoom < 8
+          ? si
+            ? "ප්‍රධාන බලාගාර · විස්තර සඳහා විශාල කරන්න"
+            : "Major plants · zoom in for detail"
+          : zoom < 9
+            ? si
+              ? "සියලු බලාගාර"
+              : "All plants"
+            : zoom < 10
+              ? si
+                ? "බලාගාර හා උපපොළ"
+                : "Plants & substations"
+              : si
+                ? "සම්පූර්ණ ජාල විස්තර"
+                : "Full network detail"}
+      </div>
+      {operations && (trips > 0 || shedLoads > 0) && (
+        <div className="sim-map-incident-summary" role="status">
+          {trips > 0 && (
+            <span className="is-trip">
+              ● {trips} {si ? "ආරක්ෂණ විසන්ධි" : "tripped"}
+            </span>
+          )}
+          {shedLoads > 0 && (
+            <span className="is-shed">
+              ◐ {shedLoads} {si ? "භාර අඩු කිරීම්" : "loads curtailed"}
+            </span>
+          )}
+          {props.state.unserved > 0.5 && (
+            <span>
+              {Math.round(props.state.unserved)} MW{" "}
+              {si ? "සපයා නැත" : "unserved"}
+            </span>
+          )}
+        </div>
+      )}
+      {cues.length > 0 && (
+        <div
+          className="sim-map-events"
+          aria-live="polite"
+          aria-label={si ? "සජීවී සිදුවීම්" : "Live map events"}
+        >
+          {cues.slice(0, 3).map((cue) => (
+            <button
+              type="button"
+              key={cue.id}
+              className={`sim-map-event sim-map-event--${cue.level}`}
+              onClick={() => locateCue(cue)}
+              title={si ? cue.detailSi : cue.detail}
+            >
+              <span className="sim-map-event-icon">
+                {cue.kind === "trip" || cue.kind === "blackout" ? "ϟ" : "!"}
+              </span>
+              <span>
+                <strong>{si ? cue.labelSi : cue.label}</strong>
+                <small>{si ? cue.detailSi : cue.detail}</small>
+                <em>{si ? "සිතියමේ පෙන්වන්න ↗" : "Locate on map ↗"}</em>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
       {offline && (
         <div className="sim-map-offline" role="status">
           <span>
@@ -592,31 +918,6 @@ export default function SimulatorMap(props: Props) {
           </button>
         </div>
       )}
-      <style>{`
-      .sim-map { position: relative; width: 100%; height: 100%; min-height: 360px; isolation: isolate; }
-      .sim-map-canvas { position: absolute; inset: 0; background: #dce9ed; font: inherit; }
-      .sim-map-marker { background: none; border: none; }
-      .sim-map-symbol { display: block; filter: drop-shadow(0 1px 2px #19384930); }
-      .sim-map-label { position: absolute; left: 29px; top: 2px; padding: 3px 6px; color: #243c4a; border: 1px solid #ffffffc0; background: #fffffff0; border-radius: 4px; white-space: nowrap; pointer-events: none; font: 600 10px/1.35 Arial, 'Noto Sans Sinhala', sans-serif; box-shadow: 0 1px 3px #15314112; }
-      .sim-map-label--selected { color: #056998; border-color: #64bae0; background: white; }
-      .sim-map-marker--selected::before { content: ""; position: absolute; inset: -6px; border: 1.5px solid #118dbd; border-radius: 50%; pointer-events: none; animation: sim-map-locate 2.5s ease-out infinite; }
-      @keyframes sim-map-locate { 0% { opacity: .75; transform: scale(.9); } 100% { opacity: 0; transform: scale(1.5); } }
-      @media (prefers-reduced-motion: reduce) { .sim-map-marker--selected::before { animation: none; opacity: .6; } }
-      .sim-map-marker--selected .sim-map-symbol { filter: drop-shadow(0 0 5px #0e91c6a0); }
-      .sim-map-marker:focus-visible { outline: 3px solid #0899d1; outline-offset: 4px; border-radius: 50%; }
-      .sim-map-tools { position: absolute; z-index: 500; right: 16px; top: 16px; display: flex; flex-direction: column; background: #fff; border: 1px solid #cad6df; border-radius: 8px; overflow: hidden; box-shadow: 0 3px 14px #15334818; }
-      .sim-map-tools button { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-bottom: 1px solid #e4eaed; color: #345064; background: white; font: 22px/1 Arial; cursor: pointer; }
-      .sim-map-tools button:last-child { border: 0; }
-      .sim-map-tools button:hover { background: #edf6fa; }
-      .sim-map-offline { position: absolute; z-index: 500; bottom: 33px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px); display: flex; align-items: center; gap: 12px; border: 1px solid #d8bb7e; border-radius: 6px; padding: 8px 12px; font-size: 11px; color: #765619; background: #fffae9; box-shadow: 0 2px 12px #0001; }
-      .sim-map-offline button { color: inherit; border: 1px solid #d8bb7e; border-radius: 4px; padding: 4px 8px; background: white; cursor: pointer; }
-      .sim-map-loading { position: absolute; z-index: 500; left: 50%; top: 45%; transform: translate(-50%,-50%); background: white; color: #345064; border-radius: 8px; padding: 16px 22px; font-size: 13px; }
-      .sim-map .leaflet-control-attribution { font: 10px/1.5 Arial, sans-serif; padding: 3px 7px; color: #43576a; background: #fffffff0; }
-      .sim-map .leaflet-control-scale { margin-bottom: 10px; margin-left: 14px; }
-      .sim-map .leaflet-control-scale-line { border-color: #5c6d76; color: #294351; background: #ffffffcf; }
-      .sim-map .leaflet-tooltip { font: 11px/1.4 Arial, 'Noto Sans Sinhala', sans-serif; border-radius: 5px; padding: 6px 9px; }
-      .sim-map path[role=button]:focus-visible { stroke: #00a3df; stroke-opacity: .4; outline: none; }
-    `}</style>
     </div>
   );
 }

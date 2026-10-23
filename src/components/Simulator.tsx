@@ -71,6 +71,7 @@ export default function Simulator() {
     [selectedId, setSelectedId] = useState(""),
     [focusId, setFocusId] = useState<string | null>(null),
     [focusRequest, setFocusRequest] = useState(0),
+    [mapSession, setMapSession] = useState(0),
     [layer, setLayer] = useState<"operations" | "infrastructure">(
       "infrastructure",
     ),
@@ -89,7 +90,11 @@ export default function Simulator() {
   const worker = useRef<Worker | null>(null),
     audio = useRef<GameAudio | null>(null),
     heardEvent = useRef<number | null>(null),
-    quietSnapshot = useRef<{ scenario: ScenarioId; time: number } | null>(null),
+    quietSnapshot = useRef<{
+      scenario: ScenarioId;
+      time: number;
+      eventId: number;
+    } | null>(null),
     snapshot = useRef(state);
   snapshot.current = state;
   const t = translate(language);
@@ -110,9 +115,11 @@ export default function Simulator() {
         if (
           e.data.paused &&
           e.data.scenario === expected.scenario &&
-          e.data.time === expected.time
+          e.data.time === expected.time &&
+          newest === expected.eventId
         ) {
           quietSnapshot.current = null;
+          setMapSession((session) => session + 1);
           heardEvent.current = newest;
         }
         return;
@@ -189,11 +196,13 @@ export default function Simulator() {
       quietSnapshot.current = {
         scenario: c.state.scenario,
         time: c.state.time,
+        eventId: c.state.events[0]?.id ?? 0,
       };
     else if (c.type === "reset")
       quietSnapshot.current = {
         scenario: c.scenario ?? "first-shift",
         time: 28800,
+        eventId: 1,
       };
     else if (!snapshot.current.finished) {
       if (c.type === "toggle") audio.current?.play("breaker");
@@ -1282,6 +1291,8 @@ export default function Simulator() {
         </div>
         <div className="sim-map-area">
           <MapView
+            sessionKey={mapSession}
+            onLocateModel={chooseModel}
             state={state}
             sites={sites}
             routes={transmissionRoutes}
@@ -1306,7 +1317,7 @@ export default function Simulator() {
               {layer === "infrastructure"
                 ? `${sites.length} ${t("locations", "ස්ථාන")} · ${transmissionRoutes.length} ${t("route segments", "මාර්ග කොටස්")}`
                 : t(
-                    "Dashed connections are model corridors, not actual routes",
+                    "Dashed corridors + dotted equipment connections · model geometry",
                     "ඉරි කඩ සම්බන්ධතා ආකෘති මාර්ගයි; සැබෑ රැහැන් නොවේ",
                   )}
             </small>
@@ -1335,7 +1346,7 @@ export default function Simulator() {
                 </span>
                 <span>
                   <i style={{ background: "#d83d53" }} />
-                  {t("Open / overload", "විවෘත / අධිභාර")}
+                  {t("Trip / overload", "විසන්ධි / අධිභාර")}
                 </span>
               </>
             )}
