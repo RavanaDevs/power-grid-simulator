@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./rts.css";
+import "leaflet/dist/leaflet.css";
+import "./simulator.css";
 export const metadata: Metadata = {
-  title: "Gridkeeper — Keep the lights on",
+  title: "Lanka Grid — Sri Lanka Power System Simulator",
   description:
-    "Command Sri Lanka’s power grid: manage generation, resources and cascading failures on an interactive tactical map.",
+    "Explore Sri Lankan power infrastructure on OpenStreetMap and operate a transparent educational grid simulation.",
 };
 export default function RootLayout({
   children,

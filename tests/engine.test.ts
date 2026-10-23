@@ -137,8 +137,37 @@ test("disconnected city receives no phantom supply and has its own frequency", (
   for (const l of s.lines) if (l.to === 4 || l.from === 4) l.online = false;
   for (let i = 0; i < 40; i++) step(s, 0.05);
   assert.equal(s.assets.find((a) => a.id === "D4")!.served, 0);
+  assert.equal(s.busFrequency[4], 0);
+  assert.equal(s.assets.find((a) => a.id === "S5")!.online, false);
   assert.ok(s.busFrequency[4] < s.busFrequency[0]);
+  assert.ok(
+    s.frequency > 45,
+    "An isolated dead bus must not replace live-grid frequency",
+  );
   assert.ok(s.lines.filter((l) => !l.online).every((l) => l.flow === 0));
+});
+test("a dead grid reports no frequency even with an online charging battery", () => {
+  const s = createState();
+  for (const a of s.assets)
+    if (["coal", "solar", "hydro", "oil", "wind"].includes(a.kind)) {
+      a.online = false;
+      a.output = 0;
+    }
+  const battery = s.assets.find((a) => a.id === "B1")!;
+  battery.output = -100;
+  battery.target = -100;
+  refreshNetwork(s, 0);
+  assert.equal(s.frequency, 0);
+  assert.ok(s.busFrequency.every((f) => f === 0));
+  assert.ok(s.assets.filter((a) => a.kind === "bus").every((a) => !a.online));
+  s.paused = false;
+  step(s, 1);
+  assert.equal(
+    s.frequencyAlarm,
+    false,
+    "An absent waveform is not a frequency excursion",
+  );
+  assert.ok(s.blackoutTimer > 0, "Supply-loss protection still runs");
 });
 test("cascade scenario redistributes flow and trips successive lines", () => {
   const s = createState("normal", "cascade");

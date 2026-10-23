@@ -1,19 +1,36 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { forecastAt, type State } from "@/game/engine";
 import { translate, gridTime, type Language } from "@/game/i18n";
 export default function Forecast({
   state,
   language,
   compact = false,
+  fitContainer = false,
 }: {
   state: State;
   language: Language;
   compact?: boolean;
+  fitContainer?: boolean;
 }) {
   const t = translate(language),
     [hover, setHover] = useState<number | null>(null),
     [table, setTable] = useState(false);
+  const svg = useRef<SVGSVGElement>(null);
+  const [size, setSize] = useState({ width: 770, height: 210 });
+  useEffect(() => {
+    if (!fitContainer || !svg.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (width > 0 && height > 0) setSize({ width, height });
+    });
+    observer.observe(svg.current);
+    return () => observer.disconnect();
+  }, [fitContainer]);
+  const width = fitContainer ? size.width : 770;
+  const height = fitContainer ? size.height : 210;
+  const plotWidth = Math.max(1, width - 70);
+  const plotBottom = height - 30;
   const start = Math.max(28800, state.time - 3 * 3600),
     end = Math.min(115200, state.time + 6 * 3600),
     span = Math.max(1, end - start);
@@ -29,8 +46,8 @@ export default function Forecast({
         100,
       ) / 250,
     ) * 250;
-  const x = (time: number) => 44 + ((time - start) / span) * 700,
-    y = (v: number) => 180 - (v / max) * 152;
+  const x = (time: number) => 44 + ((time - start) / span) * plotWidth,
+    y = (v: number) => plotBottom - (v / max) * (plotBottom - 28);
   const path = (points: { time: number; value: number }[]) =>
     points
       .map(
@@ -81,18 +98,22 @@ export default function Forecast({
         </span>
       </div>
       <svg
+        ref={svg}
         role="img"
         aria-label={t(
           "Actual and forecast power in megawatts over time",
           "කාලය අනුව සැබෑ හා පුරෝකථිත බලය මෙගාවොට්වලින්",
         )}
-        viewBox="0 0 770 210"
+        viewBox={`0 0 ${width} ${height}`}
         onMouseMove={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setHover(
             Math.max(
               0,
-              Math.min(1, (((e.clientX - r.left) / r.width) * 770 - 44) / 700),
+              Math.min(
+                1,
+                (((e.clientX - r.left) / r.width) * width - 44) / plotWidth,
+              ),
             ),
           );
         }}
@@ -102,7 +123,7 @@ export default function Forecast({
           <g key={v}>
             <line
               x1="44"
-              x2="744"
+              x2={width - 26}
               y1={y(v * max)}
               y2={y(v * max)}
               stroke="#b8d9af18"
@@ -133,24 +154,29 @@ export default function Forecast({
           x1={x(state.time)}
           x2={x(state.time)}
           y1="23"
-          y2="184"
+          y2={plotBottom + 4}
           stroke="#e8ecd877"
           strokeDasharray="3 3"
         />
-        <text x={Math.min(700, x(state.time) + 6)} y="22">
+        <text x={Math.min(width - 70, x(state.time) + 6)} y="22">
           {t("NOW", "දැන්")}
         </text>
         {[0, 0.25, 0.5, 0.75, 1].map((v) => (
-          <text key={v} x={44 + 700 * v} y="204" textAnchor="middle">
+          <text
+            key={v}
+            x={44 + plotWidth * v}
+            y={height - 6}
+            textAnchor="middle"
+          >
             {gridTime(start + span * v)}
           </text>
         ))}
         {hover !== null && (
           <line
-            x1={44 + 700 * hover}
-            x2={44 + 700 * hover}
+            x1={44 + plotWidth * hover}
+            x2={44 + plotWidth * hover}
             y1="24"
-            y2="184"
+            y2={plotBottom + 4}
             stroke="#f0cd8580"
           />
         )}

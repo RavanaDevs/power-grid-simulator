@@ -1,3 +1,5 @@
+> Historical notes for the original game at `/classic`. For the current OpenStreetMap simulator, see [infrastructure research](SRI_LANKA_INFRASTRUCTURE.md) and [model limitations](SIMULATOR_MODEL.md).
+
 # Gridkeeper: research and modelling notes
 
 Research checked 9 October 2026. Historical publications are reference material, not live system data. All changes remain in this project folder.

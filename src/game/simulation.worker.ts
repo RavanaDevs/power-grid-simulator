@@ -7,7 +7,9 @@ onmessage = (event: MessageEvent<Command>) => {
 };
 let ticks = 0;
 setInterval(() => {
+  // Commands publish immediately; a paused map needs no duplicate snapshots.
+  if (state.paused || state.finished) return;
   state = step(state, 0.05);
-  if (++ticks % 4 === 0) postMessage(state);
+  if (++ticks % 4 === 0 || state.paused || state.finished) postMessage(state);
 }, 50);
 postMessage(state);
