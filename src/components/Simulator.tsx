@@ -17,6 +17,8 @@ import {
   Layers,
   Map as MapIcon,
   Menu,
+  Moon,
+  Sun,
   Network,
   Pause,
   Play,
@@ -67,6 +69,7 @@ export default function Simulator() {
   const [state, setState] = useState<State>(() => createState()),
     [ready, setReady] = useState(false),
     [language, setLanguage] = useState<Language>("en"),
+    [theme, setTheme] = useState<"dark" | "light">("dark"),
     [section, setSection] = useState<Section>("overview"),
     [selectedId, setSelectedId] = useState(""),
     [focusId, setFocusId] = useState<string | null>(null),
@@ -139,6 +142,8 @@ export default function Simulator() {
       setToast("Simulation worker could not start. Reload the page to retry.");
     try {
       setSaveAvailable(!!localStorage.getItem(SAVE_KEY));
+      const savedTheme = localStorage.getItem("lanka-sim-theme");
+      if (savedTheme === "light" || savedTheme === "dark") setTheme(savedTheme);
       const l = localStorage.getItem("lanka-sim-language");
       if (l === "si") setLanguage(l);
     } catch {}
@@ -530,7 +535,7 @@ export default function Simulator() {
     );
   }
   return (
-    <main className="simulator" lang={language}>
+    <main className="simulator" data-theme={theme} lang={language}>
       <header className="sim-header">
         <a className="sim-brand" href="/">
           <span>
@@ -563,6 +568,28 @@ export default function Simulator() {
           >
             <Save size={17} />
             <span>{t("Save", "සුරකින්න")}</span>
+          </button>
+          <button
+            className="sim-theme-toggle"
+            aria-label={
+              theme === "dark"
+                ? t("Switch to light theme", "ආලෝක තේමාවට මාරු වන්න")
+                : t("Switch to dark theme", "අඳුරු තේමාවට මාරු වන්න")
+            }
+            title={
+              theme === "dark"
+                ? t("Switch to light theme", "ආලෝක තේමාවට මාරු වන්න")
+                : t("Switch to dark theme", "අඳුරු තේමාවට මාරු වන්න")
+            }
+            onClick={() => {
+              const next = theme === "dark" ? "light" : "dark";
+              setTheme(next);
+              try {
+                localStorage.setItem("lanka-sim-theme", next);
+              } catch {}
+            }}
+          >
+            {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
           </button>
           <button
             onClick={changeLanguage}
