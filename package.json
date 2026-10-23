@@ -11,18 +11,20 @@
     "format": "prettier --write src tests"
   },
   "dependencies": {
-    "next": "^16.4.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.468.0",
+    "next": "16.4.2",
     "pixi.js": "^8.13.0",
-    "lucide-react": "^0.468.0"
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.0",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "prettier": "^3.6.0",
     "tsx": "^4.20.0",
-    "prettier": "^3.6.0"
+    "typescript": "^5.9.0"
   }
 }

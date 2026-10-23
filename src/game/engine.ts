@@ -386,9 +386,14 @@ export function refreshNetwork(s: State, dt: number) {
         loads.reduce((v, a) => v + a.output, 0) +
         sources.reduce((v, a) => v + Math.max(0, -a.output), 0);
     const live = g.map((b) => s.busFrequency[b]).filter((f) => f > 0);
+    // A disconnected load or an idle/charging inverter cannot maintain a bus.
+    // Synchronous units may remain energized at zero active-power dispatch.
+    const energized = sources.some(
+      (a) => ["coal", "oil", "hydro"].includes(a.kind) || a.output > 1e-6,
+    );
     const prev = live.length
       ? live.reduce((v, f) => v + f, 0) / live.length
-      : sources.length
+      : energized
         ? 50
         : 0;
     // Reduced swing equation: imbalance changes rotor speed; load damping is explicit.
@@ -403,15 +408,12 @@ export function refreshNetwork(s: State, dt: number) {
       -1.2,
       1.2,
     );
-    const hz =
-      s.restoration && !sources.length
-        ? 0
-        : dt > 0
-          ? clamp(prev + rocof * dt, 45, 55)
-          : prev;
-    if (s.restoration)
-      for (const a of members.filter((a) => a.kind === "bus"))
-        a.online = hz > 0;
+    const hz = !energized
+      ? 0
+      : dt > 0
+        ? clamp(prev + rocof * dt, 45, 55)
+        : prev;
+    for (const a of members.filter((a) => a.kind === "bus")) a.online = hz > 0;
     for (const b of g) s.busFrequency[b] = hz;
     const supplied = Math.min(1, mechanical / Math.max(1, need)),
       used = Math.min(1, need / Math.max(1, mechanical));
@@ -430,10 +432,10 @@ export function refreshNetwork(s: State, dt: number) {
   }
   powerFlow(injection, s.lines);
   s.frequency = s.busFrequency
-    .filter((f) => !s.restoration || f > 0)
+    .filter((f) => f > 0)
     .reduce(
       (worst, f) => (Math.abs(f - 50) > Math.abs(worst - 50) ? f : worst),
-      s.restoration && !s.busFrequency.some((f) => f > 0) ? 0 : 50,
+      s.busFrequency.some((f) => f > 0) ? 50 : 0,
     );
   s.cost = cost / Math.max(1, s.generation);
   s.renewable = clamp((renewable / Math.max(1, s.generation)) * 100, 0, 100);
@@ -955,9 +957,7 @@ function tick(s: State, dt: number) {
     0,
     ECONOMY.batteryCapacity,
   );
-  const alarm = s.busFrequency.some(
-    (f) => (!s.restoration || f > 0) && (f < 49.5 || f > 50.5),
-  );
+  const alarm = s.busFrequency.some((f) => f > 0 && (f < 49.5 || f > 50.5));
   if (alarm && !s.frequencyAlarm) {
     notice(
       s,
@@ -998,7 +998,7 @@ function tick(s: State, dt: number) {
   );
   const extreme = energized.some(
     (a) =>
-      (!s.restoration || s.busFrequency[a.bus] > 0) &&
+      s.busFrequency[a.bus] > 0 &&
       (s.busFrequency[a.bus] > 52.5 || s.busFrequency[a.bus] < 47.5),
   );
   s.frequencyFailureTimer = extreme
@@ -1055,7 +1055,7 @@ function tick(s: State, dt: number) {
     }
     for (const a of s.assets) {
       if (a.kind === "load") a.served = 0;
-      else if (a.kind !== "bus") {
+      else {
         a.online = false;
         a.output = 0;
       }
@@ -1065,6 +1065,8 @@ function tick(s: State, dt: number) {
       l.flow = 0;
     }
     s.generation = 0;
+    s.busFrequency.fill(0);
+    s.frequency = 0;
     s.unserved = s.demand;
     notice(s, s.failureCause, "critical", undefined, s.failureCauseSi);
   } else if (!s.restoration && s.time >= 115200) {
